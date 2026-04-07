@@ -1,0 +1,53 @@
+name: Final Task Validator
+
+on:
+  pull_request_target:
+    branches: [main]
+
+jobs:
+  verify-fix:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify bug is fixed
+        id: check
+        run: |
+          if grep -q "current >= minimum" utils.js; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "✅ Bug is fixed. checkVersion() returns true. Case closed."
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "❌ checkVersion() still broken. Fix the > to >= in utils.js."
+          fi
+
+      - name: Close PR with success message
+        if: steps.check.outputs.valid == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const player = context.payload.pull_request.user.login
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `✅ **Bug fixed, @${player}!**\n\nYou used \`git bisect\` to find the commit that changed \`>=\` to \`>\`, then fixed it.\n\n> **What you learned:** \`git bisect\` is how senior engineers find regressions in production. You give it a known-good state and a known-bad state, test each midpoint, and in O(log n) steps it identifies the exact commit that broke things. The diff is the evidence.\n\n---\nCase 04 complete. You have finished Git The Flag. 🏁`
+            })
+            await github.rest.pulls.update({
+              pull_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed'
+            })
+
+      - name: Fail if bug not fixed
+        if: steps.check.outputs.valid != 'true'
+        run: |
+          echo "❌ checkVersion() still returns false."
+          echo "Use git bisect to find the bad commit, then fix utils.js."
+          exit 1

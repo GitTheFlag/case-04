@@ -1,0 +1,71 @@
+name: Flag Validator
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Validate flag
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const crypto = require('crypto')
+            const title = context.payload.issue.title.trim()
+            const hash = crypto.createHash('sha256').update(title).digest('hex')
+            const flags = {
+              '53a6ec7e3f6b1067929230018b63a14d10e18fbf041f25b283fcc11b493d960f': {
+                num: 1,
+                msg: '🎉 Flag 1 found! You used bisect to find the bad commit.',
+                why: '> **What you learned:** `git bisect` uses binary search to find the exact commit that introduced a bug. You give it a known-good and known-bad commit, test each midpoint, and mark it good or bad. In O(log n) steps, it identifies the culprit. Every line of production code has an author and a date — bisect finds them.'
+              },
+              '2d181a89f324f3eb972f5619c395e7e7475c53de9a40d93756dd2e6b4e1b33aa': {
+                num: 2,
+                msg: '🎉 Flag 2 found! You used blame to trace the line.',
+                why: '> **What you learned:** `git blame <file>` shows who last modified each line and in which commit. It is the primary tool for understanding why a line of code exists, who wrote it, and when. Combined with `git show <hash>`, you get the full context behind any single line.'
+              },
+              '1e642693742809818fb44b91ab5e61d47ae5527077fce5a1e1687602d07ef2fc': {
+                num: 3,
+                msg: '🎉 Flag 3 found! You read the conflict markers.',
+                why: '> **What you learned:** When two branches modify the same line, git cannot decide which version to keep. The conflict markers show BOTH versions — `<<<<<<<` is your branch, `>>>>>>>` is theirs, and `=======` divides them. Reading conflicts carefully often reveals what each team was trying to achieve.'
+              },
+              '6e091a6d18186f8c35dc468e1086c01a3ca74fe4c653a13ab6439bb2c951d823': {
+                num: 4,
+                msg: '🎉 Flag 4 found! You found the hidden note.',
+                why: '> **What you learned:** `git notes` lets you attach metadata to any commit without changing its hash. Notes are stored at `refs/notes/commits` — a separate ref that is not fetched by default. They are used for code review comments, CI results, and deployment metadata. `git log --notes` makes them visible.'
+              }
+            }
+            const entry = flags[hash]
+            if (entry) {
+              const player = context.payload.issue.user.login
+              await github.rest.issues.update({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `✅ Flag ${entry.num} — found by @${player}`,
+                state: 'closed'
+              })
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `✅ Correct!\n\n${entry.msg}\n\n${entry.why}\n\n---\nKeep going — find all 4 flags then fix the bug and open a PR.`
+              })
+              await github.rest.issues.addLabels({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                labels: ['solved']
+              })
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `❌ Not quite. Keep investigating!\n\nRemember: flags look like \`GTF{...}\`\n\nHint: use \`git bisect\`, \`git blame\`, \`git merge feature/audit\`, and \`git notes\`.`
+              })
+            }
